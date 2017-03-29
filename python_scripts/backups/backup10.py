@@ -96,28 +96,29 @@ class ManifestDB(object):
             cursor = conn.cursor()
 
             # check for  10.0 < iOS < 10.1
-	    #try:
-            cursor.execute("SELECT value FROM Properties WHERE key='salt'")
-            salt = cursor.fetchone()[0]
-            #print(binascii.hexlify(salt))
-            cursor.execute("SELECT value FROM Properties WHERE key='passwordHash'")
-            hash = cursor.fetchone()[0]
-            #print(binascii.hexlify(hash))
+	    try:
+                cursor.execute("SELECT value FROM Properties WHERE key='salt'")
+                salt = cursor.fetchone()[0]
+                #print(binascii.hexlify(salt))
+                cursor.execute("SELECT value FROM Properties WHERE key='passwordHash'")
+                hash = cursor.fetchone()[0]
+                #print(binascii.hexlify(hash))
 
-            calculatedHash = hashlib.sha256(kb.password + str(salt)).hexdigest()
+                calculatedHash = hashlib.sha256(kb.password + str(salt)).hexdigest()
 
-            if calculatedHash == binascii.hexlify(hash):
-                key = (hashlib.sha1(kb.password + str(salt)).hexdigest())[:32]
-                iv = ''
-                for i in range(16):
-                    iv += chr(i)
-                aes = AES.new(key, AES.MODE_CBC, iv)
-                cryptedFileInfo = True
-            else:
-                print "Hash mismatch"
-                return
-            #except:
-            #    cryptedFileInfo = False
+                if calculatedHash == binascii.hexlify(hash):
+                    key = (hashlib.sha1(kb.password + str(salt)).digest())[:16]
+		    #print key
+                    iv = ''
+                    for i in range(16):
+                        iv += chr(i)
+                    aes = AES.new(key, AES.MODE_CBC, iv)
+                    cryptedFileInfo = True
+                else:
+                    print "Hash mismatch"
+                    return
+            except:
+                cryptedFileInfo = False
                 
 
 
@@ -132,7 +133,6 @@ class ManifestDB(object):
                 else:
                     if cryptedFileInfo:
                         file_blob = aes.decrypt(base64.b64decode(file_blob))
-			print file_blob
 
 		    self.files[filename] = MBFile(domain, relative_path, flags, file_blob)
 
