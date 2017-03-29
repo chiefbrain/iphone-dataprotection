@@ -8,8 +8,9 @@ from util.bplist import BPlistReader
 from util.tlv import loopTLVBlocks, tlvToDict
 import hmac
 import struct
+import hashlib
 
-KEYBAG_TAGS = ["VERS", "TYPE", "UUID", "HMCK", "WRAP", "SALT", "ITER"]
+KEYBAG_TAGS = ["VERS", "TYPE", "UUID", "HMCK", "WRAP", "SALT", "ITER", "DPWT", "DPIC", "DPSL"]
 CLASSKEY_TAGS = ["CLAS","WRAP","WPKY", "KTYP", "PBKY"]  #UUID
 KEYBAG_TYPES = ["System", "Backup", "Escrow", "OTA (icloud)"]
 SYSTEM_KEYBAG = 0
@@ -200,8 +201,12 @@ class Keybag(object):
             k = classkey["WPKY"]
             if classkey["WRAP"] & WRAP_PASSCODE:
                 k = AESUnwrap(passcodekey, classkey["WPKY"])
-                if not k:
-                    return False
+                if not k: #perhaps iOS >= 10.1
+                    kek  = PBKDF2(passcodekey, self.attrs["DPSL"], iterations=self.attrs["DPIC"], macmodule=hmac, digestmodule=sha256).read(256)
+                    kek2 = PBKDF2(kek, self.attrs["SALT"], iterations=self.attrs["SALT"], macmodule=hmac, digestmodule=sha1).read(256)
+                    k = AESUnwrap(kek2, classkey["WPKY"])
+		    if not k:
+                        return False
             if classkey["WRAP"] & WRAP_DEVICE:
                 if not self.deviceKey:
                     continue
