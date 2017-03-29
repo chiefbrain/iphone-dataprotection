@@ -3,6 +3,10 @@ import re
 import sqlite3
 import plistlib
 
+import hashlib
+import binascii
+import base64
+
 from Crypto.Cipher import AES
 
 from util import readPlist, makedirs, parsePlist
@@ -80,16 +84,42 @@ class MBFile(object):
 
 
 class ManifestDB(object):
-    def __init__ (self, path):
+    def __init__ (self, path, kb):
         self.files = {}
         self.backup_path = path
-        self.keybag = None
+        self.keybag = kb
 
         conn = sqlite3.connect(os.path.join(path,'Manifest.db'))
 
         try:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
+
+            # check for  10.0 < iOS < 10.1
+	    #try:
+            cursor.execute("SELECT value FROM Properties WHERE key='salt'")
+            salt = cursor.fetchone()[0]
+            #print(binascii.hexlify(salt))
+            cursor.execute("SELECT value FROM Properties WHERE key='passwordHash'")
+            hash = cursor.fetchone()[0]
+            #print(binascii.hexlify(hash))
+
+            calculatedHash = hashlib.sha256(kb.password + str(salt)).hexdigest()
+
+            if calculatedHash == binascii.hexlify(hash):
+                key = (hashlib.sha1(kb.password + str(salt)).hexdigest())[:32]
+                iv = ''
+                for i in range(16):
+                    iv += chr(i)
+                aes = AES.new(key, AES.MODE_CBC, iv)
+                cryptedFileInfo = True
+            else:
+                print "Hash mismatch"
+                return
+            #except:
+            #    cryptedFileInfo = False
+                
+
 
             for record in cursor.execute("SELECT fileID, domain, relativePath, flags, file FROM Files"):
                 filename = record[0]
@@ -100,7 +130,11 @@ class ManifestDB(object):
                 if flags == 16:
                     warn("Flags == 16 for {0} {1} ({2})".format(domain, relative_path, file_blob))
                 else:
-                    self.files[filename] = MBFile(domain, relative_path, flags, file_blob)
+                    if cryptedFileInfo:
+                        file_blob = aes.decrypt(base64.b64decode(file_blob))
+			print file_blob
+
+		    self.files[filename] = MBFile(domain, relative_path, flags, file_blob)
 
         finally:
             conn.close()

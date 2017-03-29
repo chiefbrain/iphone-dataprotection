@@ -51,16 +51,16 @@ def extract_backup(backup_path, output_path, password=""):
         print "python keychain_tool.py -d \"%s\" \"%s\"" % (output_path + "/KeychainDomain/keychain-backup.plist", output_path + "/Manifest.plist")
 
     elif os.path.exists(backup_path + "/Manifest.db"):
-        manifset_db = ManifestDB(backup_path)
-
         kb = Keybag.createWithBackupManifest(manifest, password)
         if not kb:
             return
+
+        manifset_db = ManifestDB(backup_path, kb)
+
         manifest["password"] = password
         makedirs(output_path)
         plistlib.writePlist(manifest, output_path + "/Manifest.plist")
 
-        manifset_db.keybag = kb
         manifset_db.extract_backup(output_path)
 
         print "You can decrypt the keychain using the following command: "

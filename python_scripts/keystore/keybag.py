@@ -55,6 +55,7 @@ class Keybag(object):
         self.classKeys = {}
         self.KeyBagKeys = None #DATASIGN blob
         self.parseBinaryBlob(data)
+	self.password = None
 
     @staticmethod
     def getSystemkbfileWipeID(filename):
@@ -133,6 +134,7 @@ class Keybag(object):
         if not kb.unlockBackupKeybagWithPasscode(password):
             print "Cannot decrypt backup keybag. Wrong password ?"
             return
+	kb.password = password
         return kb
     
     def isBackupKeybag(self):
