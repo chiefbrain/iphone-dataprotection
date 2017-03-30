@@ -55,10 +55,11 @@ def extract_backup(backup_path, output_path, password=""):
         if not kb:
             return
 
-        manifset_db = ManifestDB(backup_path, kb)
+        makedirs(output_path)
+
+        manifset_db = ManifestDB(backup_path, output_path, kb)
 
         manifest["password"] = password
-        makedirs(output_path)
         plistlib.writePlist(manifest, output_path + "/Manifest.plist")
 
         manifset_db.extract_backup(output_path)

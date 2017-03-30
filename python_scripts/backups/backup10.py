@@ -3,11 +3,15 @@ import re
 import sqlite3
 import plistlib
 
+import struct
+
 import hashlib
 import binascii
 import base64
 
 from Crypto.Cipher import AES
+from crypto.aes import AESdecryptCBC
+from crypto.aeswrap import AESUnwrap
 
 from util import readPlist, makedirs, parsePlist
 from util import bplist
@@ -84,12 +88,45 @@ class MBFile(object):
 
 
 class ManifestDB(object):
-    def __init__ (self, path, kb):
+    def __init__ (self, backup_path, output_path, kb):
         self.files = {}
-        self.backup_path = path
+        self.backup_path = backup_path
         self.keybag = kb
 
-        conn = sqlite3.connect(os.path.join(path,'Manifest.db'))
+	if kb.manifestKey != None:
+            DB_key = kb.manifestKey[-40:]
+            DB_class = int(binascii.hexlify(kb.manifestKey[:1]), 16)
+
+            file_enc = open(os.path.join(backup_path,'Manifest.db'),"r")
+            file_dec = open(os.path.join(output_path,'Manifest.db'),"w")
+
+            key = self.keybag.unwrapKeyForClass(DB_class, DB_key)
+            if not key:
+                warn("Cannot unwrap key for {0}".format(out_file))
+                return
+            aes = AES.new(key, AES.MODE_CBC, "\x00"*16)
+
+            while True:
+                data = file_enc.read(8192)
+                if not data:
+                    break
+                data2 = data = aes.decrypt(data)
+                file_dec.write(data)
+
+            file_enc.close()
+
+            c = data2[-1]
+            i = ord(c)
+            if i < 17 and data2.endswith(c*i):
+                file_dec.truncate(file_dec.tell() - i)
+            else:
+                warn("Bad padding, last byte = 0x%x !" % i)
+
+            file_dec.close()
+
+            conn = sqlite3.connect(os.path.join(output_path,'Manifest.db'))
+	else:
+            conn = sqlite3.connect(os.path.join(backup_path,'Manifest.db'))
 
         try:
             conn.row_factory = sqlite3.Row
@@ -99,16 +136,14 @@ class ManifestDB(object):
 	    try:
                 cursor.execute("SELECT value FROM Properties WHERE key='salt'")
                 salt = cursor.fetchone()[0]
-                #print(binascii.hexlify(salt))
+
                 cursor.execute("SELECT value FROM Properties WHERE key='passwordHash'")
                 hash = cursor.fetchone()[0]
-                #print(binascii.hexlify(hash))
 
                 calculatedHash = hashlib.sha256(kb.password + str(salt)).hexdigest()
 
                 if calculatedHash == binascii.hexlify(hash):
                     key = (hashlib.sha1(kb.password + str(salt)).digest())[:16]
-		    #print key
                     iv = ''
                     for i in range(16):
                         iv += chr(i)
@@ -120,7 +155,6 @@ class ManifestDB(object):
             except:
                 cryptedFileInfo = False
                 
-
 
             for record in cursor.execute("SELECT fileID, domain, relativePath, flags, file FROM Files"):
                 filename = record[0]

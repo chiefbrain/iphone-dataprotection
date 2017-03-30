@@ -8,7 +8,7 @@ from util.bplist import BPlistReader
 from util.tlv import loopTLVBlocks, tlvToDict
 import hmac
 import struct
-import hashlib
+import binascii
 
 KEYBAG_TAGS = ["VERS", "TYPE", "UUID", "HMCK", "WRAP", "SALT", "ITER", "DPWT", "DPIC", "DPSL"]
 CLASSKEY_TAGS = ["CLAS","WRAP","WPKY", "KTYP", "PBKY"]  #UUID
@@ -50,6 +50,7 @@ class Keybag(object):
         self.uuid = None
         self.wrap = None
         self.deviceKey = None
+        self.manifestKey = None
         self.unlocked = False
         self.passcodeComplexity = 0
         self.attrs = {}
@@ -57,6 +58,8 @@ class Keybag(object):
         self.KeyBagKeys = None #DATASIGN blob
         self.parseBinaryBlob(data)
 	self.password = None
+	self.kek = None
+        self.kek2 = None
 
     @staticmethod
     def getSystemkbfileWipeID(filename):
@@ -132,6 +135,8 @@ class Keybag(object):
     def createWithBackupManifest(manifest, password, deviceKey=None):
         kb = Keybag(manifest["BackupKeyBag"].data)
         kb.deviceKey = deviceKey
+        if "ManifestKey" in manifest:
+            kb.manifestKey = manifest["ManifestKey"].data
         if not kb.unlockBackupKeybagWithPasscode(password):
             print "Cannot decrypt backup keybag. Wrong password ?"
             return
@@ -168,7 +173,24 @@ class Keybag(object):
 
     def getPasscodekeyFromPasscode(self, passcode):
         if self.type == BACKUP_KEYBAG or self.type == OTA_KEYBAG:
-            return PBKDF2(passcode, self.attrs["SALT"], iterations=self.attrs["ITER"]).read(32)
+            #return PBKDF2(passcode, self.attrs["SALT"], iterations=self.attrs["ITER"]).read(32)
+
+            self.kek  = binascii.unhexlify("1881657569b6df76f4a4c81f21c984a87a43f7afdf6a5da83d982c2a2e9720aa")
+            self.kek2 = binascii.unhexlify("7df00a6464383c20d8ac1f69d3908b8c3e1eee2039530d7dd8fb4aa095fa6c6b")
+
+            if self.kek and self.kek2:
+                print("predefined kek2: " + self.kek2)
+                return self.kek2
+            else:
+                print "DPSL:  " + binascii.hexlify(self.attrs["DPSL"])
+                print "DPIC:  " + str(self.attrs["DPIC"])
+                print "SALT:  " + binascii.hexlify(self.attrs["SALT"])
+                print "ITER:  " + str(self.attrs["ITER"])
+                self.kek  = PBKDF2(passcode, self.attrs["DPSL"], iterations=self.attrs["DPIC"], macmodule=hmac, digestmodule=sha256).read(32)
+                print "kek:   " + binascii.hexlify(self.kek)
+                self.kek2 = PBKDF2(self.kek, self.attrs["SALT"], iterations=self.attrs["ITER"], macmodule=hmac, digestmodule=sha1).read(32)
+                print "kek2:  " + binascii.hexlify(self.kek2)
+                return self.kek2
         else:
             #Warning, need to run derivation on device with this result
             return PBKDF2(passcode, self.attrs["SALT"], iterations=1).read(32)
@@ -201,12 +223,8 @@ class Keybag(object):
             k = classkey["WPKY"]
             if classkey["WRAP"] & WRAP_PASSCODE:
                 k = AESUnwrap(passcodekey, classkey["WPKY"])
-                if not k: #perhaps iOS >= 10.1
-                    kek  = PBKDF2(passcodekey, self.attrs["DPSL"], iterations=self.attrs["DPIC"], macmodule=hmac, digestmodule=sha256).read(256)
-                    kek2 = PBKDF2(kek, self.attrs["SALT"], iterations=self.attrs["SALT"], macmodule=hmac, digestmodule=sha1).read(256)
-                    k = AESUnwrap(kek2, classkey["WPKY"])
-		    if not k:
-                        return False
+                if not k:
+                    return False
             if classkey["WRAP"] & WRAP_DEVICE:
                 if not self.deviceKey:
                     continue
