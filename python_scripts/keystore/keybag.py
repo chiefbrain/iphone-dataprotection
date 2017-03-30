@@ -173,23 +173,18 @@ class Keybag(object):
 
     def getPasscodekeyFromPasscode(self, passcode):
         if self.type == BACKUP_KEYBAG or self.type == OTA_KEYBAG:
-            #return PBKDF2(passcode, self.attrs["SALT"], iterations=self.attrs["ITER"]).read(32)
-
-            self.kek  = binascii.unhexlify("1881657569b6df76f4a4c81f21c984a87a43f7afdf6a5da83d982c2a2e9720aa")
-            self.kek2 = binascii.unhexlify("7df00a6464383c20d8ac1f69d3908b8c3e1eee2039530d7dd8fb4aa095fa6c6b")
-
-            if self.kek and self.kek2:
-                print("predefined kek2: " + self.kek2)
-                return self.kek2
+            if self.manifestKey == None:
+                return PBKDF2(passcode, self.attrs["SALT"], iterations=self.attrs["ITER"]).read(32)
             else:
-                print "DPSL:  " + binascii.hexlify(self.attrs["DPSL"])
-                print "DPIC:  " + str(self.attrs["DPIC"])
-                print "SALT:  " + binascii.hexlify(self.attrs["SALT"])
-                print "ITER:  " + str(self.attrs["ITER"])
-                self.kek  = PBKDF2(passcode, self.attrs["DPSL"], iterations=self.attrs["DPIC"], macmodule=hmac, digestmodule=sha256).read(32)
-                print "kek:   " + binascii.hexlify(self.kek)
-                self.kek2 = PBKDF2(self.kek, self.attrs["SALT"], iterations=self.attrs["ITER"], macmodule=hmac, digestmodule=sha1).read(32)
-                print "kek2:  " + binascii.hexlify(self.kek2)
+                #self.kek  = binascii.unhexlify("1881657569b6df76f4a4c81f21c984a87a43f7afdf6a5da83d982c2a2e9720aa")
+                #self.kek2 = binascii.unhexlify("7df00a6464383c20d8ac1f69d3908b8c3e1eee2039530d7dd8fb4aa095fa6c6b")
+
+                if self.kek and self.kek2:
+                    print("predefined kek!")
+                else:
+                    self.kek  = PBKDF2(passcode, self.attrs["DPSL"], iterations=self.attrs["DPIC"], macmodule=hmac, digestmodule=sha256).read(32)
+                    self.kek2 = PBKDF2(self.kek, self.attrs["SALT"], iterations=self.attrs["ITER"], macmodule=hmac, digestmodule=sha1).read(32)
+
                 return self.kek2
         else:
             #Warning, need to run derivation on device with this result
